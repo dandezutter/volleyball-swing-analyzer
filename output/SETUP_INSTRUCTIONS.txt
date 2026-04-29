@@ -1,0 +1,102 @@
+MOD Volleyball Swing Analyzer — Setup & Deployment Guide
+=========================================================
+
+PREREQUISITES
+- Node.js 18+ installed (already confirmed on your machine)
+- A Claude API key from https://console.anthropic.com/settings/keys
+- A free Netlify account at https://netlify.com
+- Git installed (for Netlify deploy from GitHub)
+
+----------------------------------------------------------
+OPTION A: QUICK LOCAL TEST (no Netlify account needed)
+----------------------------------------------------------
+
+1. Install Netlify CLI globally:
+   (In your terminal, run as Administrator if needed)
+   > npm install -g netlify-cli
+
+2. Create your local environment file:
+   Copy .env.example to .env.local and fill in your Claude API key:
+   > copy .env.example .env.local
+   Then edit .env.local and replace sk-ant-xxx with your real key.
+
+3. Start the local dev server (supports Netlify Functions):
+   > netlify dev
+
+4. Open http://localhost:8888 in your browser (or on your phone via local network IP).
+
+----------------------------------------------------------
+OPTION B: DEPLOY TO NETLIFY (free, shareable URL)
+----------------------------------------------------------
+
+1. Push this project to a GitHub repository:
+   > git init
+   > git add .
+   > git commit -m "Initial volleyball analyzer app"
+   > git remote add origin https://github.com/YOUR_USERNAME/volleyball-swing-analyzer.git
+   > git push -u origin main
+
+2. Go to https://app.netlify.com → "Add new site" → "Import an existing project"
+   Select your GitHub repository.
+
+3. Build settings (Netlify should auto-detect these from netlify.toml):
+   - Build command: npm run build
+   - Publish directory: dist
+   - Functions directory: netlify/functions
+
+4. Set your environment variable:
+   Go to: Site Settings → Environment Variables → Add variable
+   Key: CLAUDE_API_KEY
+   Value: sk-ant-your-real-key-here
+
+5. Deploy! Click "Deploy site". Your URL will be something like:
+   https://amazing-name-123.netlify.app
+
+6. Share that URL with your coaching staff — it works on any phone browser.
+
+----------------------------------------------------------
+TESTING THE APP
+----------------------------------------------------------
+
+1. Open the app URL on your phone
+2. Tap "Select Video" and choose a volleyball swing clip
+   - Works best: side-angle view, player visible from head to ankles
+   - Slo-mo clips (120fps or 240fps) give the most accurate analysis
+3. On the Trim screen: drag the handles to select just the approach + swing
+   (usually 3–8 seconds even on long slo-mo files)
+4. Tap "Analyze This Segment"
+5. Wait ~10-15 seconds for AI analysis
+6. Review the feedback, then tap "Share Feedback" to text/email the summary
+
+----------------------------------------------------------
+TROUBLESHOOTING
+----------------------------------------------------------
+
+"Skeleton overlay not showing":
+  → Check browser console for COOP/COEP errors
+  → Run: curl -I https://your-site.netlify.app
+    You should see: Cross-Origin-Opener-Policy: same-origin
+  → If missing, verify the [[headers]] section in netlify.toml deployed correctly
+
+"AI analysis failed (500)":
+  → Check that CLAUDE_API_KEY is set in Netlify Environment Variables
+  → Check Netlify Function logs: Site → Functions → analyze → View logs
+
+"Video won't load":
+  → MP4 and MOV (iPhone) files are supported
+  → If you get a CORS error, the video loaded fine — that's a different issue
+
+For large slo-mo files that are slow to process:
+  → Trim the window down to under 15 seconds for fastest analysis
+  → The video stays on your device — nothing is uploaded to a server
+
+----------------------------------------------------------
+FUTURE: iOS / ANDROID APP
+----------------------------------------------------------
+
+When ready to convert to a native app:
+1. Install Capacitor: npm install @capacitor/core @capacitor/cli
+2. Add platforms: npx cap add ios && npx cap add android
+3. Update VITE_API_BASE_URL in .env to your production Netlify URL
+4. Build and sync: npm run build && npx cap sync
+5. Open in Xcode / Android Studio to publish to App Store / Play Store

@@ -1,0 +1,107 @@
+=====================================================
+  MOD Swing Analyzer — Publishing Guide
+  How to deploy to a live website
+=====================================================
+
+The app is pre-configured for Netlify, which is free for personal projects
+and handles both the frontend and the AI analysis function automatically.
+
+-----------------------------------------------------
+OPTION 1: Netlify (Recommended — Free, Easiest)
+-----------------------------------------------------
+
+STEP 1: Create a free Netlify account
+  1. Go to https://netlify.com
+  2. Click "Sign up" — use your GitHub, GitLab, or email
+
+STEP 2: Put your code on GitHub (one-time setup)
+  1. Go to https://github.com and create a free account if you don't have one
+  2. Create a new repository (click the + icon → New repository)
+     - Name it: volleyball-swing-analyzer
+     - Set it to Private (keeps your code hidden)
+  3. In your project folder on Windows, open a Command Prompt or PowerShell and run:
+       git init
+       git add .
+       git commit -m "Initial commit"
+       git branch -M main
+       git remote add origin https://github.com/YOUR_USERNAME/volleyball-swing-analyzer.git
+       git push -u origin main
+
+STEP 3: Connect Netlify to your GitHub repo
+  1. In Netlify dashboard, click "Add new site" → "Import an existing project"
+  2. Choose GitHub, authorize Netlify, and select your repository
+  3. Build settings are auto-detected from netlify.toml:
+       Build command:   npm run build
+       Publish dir:     dist
+       Functions dir:   netlify/functions
+  4. Click "Deploy site"
+
+STEP 4: Add your API key to Netlify
+  1. In Netlify, go to your site → Site settings → Environment variables
+  2. Add variable:
+       Key:   CLAUDE_API_KEY
+       Value: (your Anthropic API key from https://console.anthropic.com)
+  3. Click "Deploy" → "Trigger deploy" to rebuild with the key
+
+STEP 5: Your site is live!
+  Netlify gives you a URL like: https://your-site-name.netlify.app
+  You can set a custom domain in Site settings → Domain management.
+
+COST: Free tier includes 100GB bandwidth/month and 125k function invocations/month.
+  Each video analysis uses ~1 function call. Very comfortably free for team use.
+
+-----------------------------------------------------
+OPTION 2: Custom Domain (Optional upgrade)
+-----------------------------------------------------
+  1. Buy a domain (e.g. modswinganalyzer.com) from Namecheap or Google Domains (~$12/yr)
+  2. In Netlify → Site settings → Domain management → Add custom domain
+  3. Follow the DNS instructions Netlify provides
+  HTTPS is set up automatically for free via Let's Encrypt.
+
+-----------------------------------------------------
+OPTION 3: Share with your team without a domain
+-----------------------------------------------------
+  The free netlify.app URL works fine on any device — phone, tablet, laptop.
+  Just share the link with players and parents.
+  It works as a mobile web app: on iPhone, tap Share → "Add to Home Screen"
+  to get an app icon on the home screen (no App Store needed).
+
+-----------------------------------------------------
+UPDATING THE APP AFTER CHANGES
+-----------------------------------------------------
+  Every time you make changes to the code:
+  1. In the project folder, run:
+       git add .
+       git commit -m "Describe your change here"
+       git push
+  2. Netlify auto-detects the push and redeploys in ~1 minute.
+  3. Your live URL updates automatically.
+
+-----------------------------------------------------
+KEEPING YOUR API KEY SAFE
+-----------------------------------------------------
+  - Never commit your .env.local file to GitHub.
+  - Confirm .env.local is in .gitignore (it should already be).
+  - The API key you put in Netlify's Environment Variables is stored securely
+    and never exposed to the browser.
+  - The key is only used server-side in the Netlify function.
+
+-----------------------------------------------------
+COST OF RUNNING THE APP
+-----------------------------------------------------
+  Netlify hosting:       Free
+  Anthropic API calls:   ~$0.01–0.05 per video analysis (claude-sonnet-4-6)
+  Custom domain:         ~$12/year (optional)
+
+  For a team of 20 players each uploading 5 videos/month = 100 analyses/month
+  Estimated API cost: $1–5/month
+
+-----------------------------------------------------
+TROUBLESHOOTING
+-----------------------------------------------------
+  "Function returned 500" → Check your CLAUDE_API_KEY in Netlify env vars
+  "Build failed"          → Check the Netlify deploy log for the error
+  "Video won't upload"    → Max file size is 500MB; trim on your phone first
+  "Skeleton not showing"  → Make sure the player is fully visible in frame
+
+=====================================================
