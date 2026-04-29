@@ -30,7 +30,7 @@ function analyzeDevPlugin() {
         await new Promise((r) => req.on('end', r))
 
         try {
-          const { handler } = await import('./netlify/functions/analyze.js')
+          const { handler } = await import(/* @vite-ignore */ './netlify/functions/analyze.js')
           const result = await handler({
             httpMethod: 'POST',
             body: Buffer.concat(chunks).toString(),
