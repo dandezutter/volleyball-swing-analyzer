@@ -62,4 +62,9 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['@mediapipe/pose'],
   },
+  build: {
+    rollupOptions: {
+      external: ['@anthropic-ai/sdk'],
+    },
+  },
 })
