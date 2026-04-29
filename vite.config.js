@@ -1,5 +1,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import { pathToFileURL } from 'node:url'
+import { resolve } from 'node:path'
 
 // Dev-only plugin: handles /.netlify/functions/analyze inside the Vite server
 // so you only need one URL (localhost:5173) during development.
@@ -30,7 +32,10 @@ function analyzeDevPlugin() {
         await new Promise((r) => req.on('end', r))
 
         try {
-          const { handler } = await import(/* @vite-ignore */ './netlify/functions/analyze.js')
+          // Use pathToFileURL so esbuild can't statically follow this import
+          // at config-bundle time (which would pull @anthropic-ai/sdk into the build).
+          const analyzeUrl = pathToFileURL(resolve(process.cwd(), 'netlify/functions/analyze.js')).href
+          const { handler } = await import(analyzeUrl)
           const result = await handler({
             httpMethod: 'POST',
             body: Buffer.concat(chunks).toString(),
