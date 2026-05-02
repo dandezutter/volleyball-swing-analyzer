@@ -53,8 +53,7 @@ export async function extractKeyFrames(video, startTime, endTime, onProgress) {
 // Seek video to a timestamp and run pose detection
 async function seekAndDetect(video, time, detector) {
   return new Promise((resolve) => {
-    const timeout = setTimeout(() => resolve(null), 4000)
-    let landmarks = null
+    const timeout = setTimeout(() => resolve(null), 5000)
     let settled = false
 
     function settle(value) {
@@ -64,25 +63,34 @@ async function seekAndDetect(video, time, detector) {
       resolve(value)
     }
 
-    // Set callback for this detection pass
     detector.onResults((results) => {
-      landmarks = results.poseLandmarks || null
-      // Resolve after onResults fires (landmarks may be null if no person visible)
+      const landmarks = results.poseLandmarks || null
       setTimeout(() => settle(landmarks), 0)
     })
 
     function doSend() {
       detector.send({ image: video }).catch(() => settle(null))
-      // Fallback: if onResults never fires within 2s, resolve with null
-      setTimeout(() => settle(null), 2000)
+      setTimeout(() => settle(null), 2500)
     }
 
-    // If video is already at the right time, seeked won't fire — send directly
+    // iOS Safari: seeked fires before the decoded frame is available to WebGL.
+    // Double-rAF lets the compositor flush the frame; readyState >= 2 confirms
+    // the browser has data at the new position before we hand it to MediaPipe.
+    function sendWhenReady() {
+      if (video.readyState >= 2) {
+        doSend()
+      } else {
+        setTimeout(sendWhenReady, 50)
+      }
+    }
+
     if (Math.abs(video.currentTime - time) < 0.05) {
-      doSend()
+      requestAnimationFrame(() => requestAnimationFrame(sendWhenReady))
     } else {
       video.currentTime = time
-      video.addEventListener('seeked', () => doSend(), { once: true })
+      video.addEventListener('seeked', () => {
+        requestAnimationFrame(() => requestAnimationFrame(sendWhenReady))
+      }, { once: true })
     }
   })
 }
@@ -143,9 +151,9 @@ function detectEvents(samples, duration) {
 // Extract a single JPEG frame from the video at the given timestamp
 async function extractFrame(video, time) {
   return new Promise((resolve) => {
-    const timeout = setTimeout(() => resolve(null), 3000)
-    video.currentTime = time
-    video.addEventListener('seeked', () => {
+    const timeout = setTimeout(() => resolve(null), 5000)
+
+    function capture() {
       clearTimeout(timeout)
       try {
         const canvas = document.createElement('canvas')
@@ -158,6 +166,20 @@ async function extractFrame(video, time) {
       } catch {
         resolve(null)
       }
+    }
+
+    // Same iOS timing fix as seekAndDetect — wait for frame to be compositor-ready
+    function captureWhenReady() {
+      if (video.readyState >= 2) {
+        capture()
+      } else {
+        setTimeout(captureWhenReady, 50)
+      }
+    }
+
+    video.currentTime = time
+    video.addEventListener('seeked', () => {
+      requestAnimationFrame(() => requestAnimationFrame(captureWhenReady))
     }, { once: true })
   })
 }
