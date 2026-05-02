@@ -100,9 +100,6 @@ async function seekAndDetect(video, time, detector, onProgress, frameNum) {
       setTimeout(() => settle(null), 2500)
     }
 
-    // iOS Safari: seeked fires before the decoded frame is available to WebGL.
-    // Double-rAF lets the compositor flush the frame; readyState >= 2 confirms
-    // the browser has data at the new position before we hand it to MediaPipe.
     function sendWhenReady() {
       if (video.readyState >= 2) {
         doSend()
@@ -112,16 +109,25 @@ async function seekAndDetect(video, time, detector, onProgress, frameNum) {
       }
     }
 
+    // Guard so seeked and the iOS fallback timer don't both trigger a send
+    let sendStarted = false
+    function startSend(reason) {
+      if (sendStarted || settled) return
+      sendStarted = true
+      dbg(onProgress, `#${frameNum} t=${time.toFixed(2)}s: ${reason} (readyState=${video.readyState})`)
+      requestAnimationFrame(() => requestAnimationFrame(sendWhenReady))
+    }
+
     if (Math.abs(video.currentTime - time) < 0.05) {
       dbg(onProgress, `#${frameNum} t=${time.toFixed(2)}s: at time (readyState=${video.readyState})`)
-      requestAnimationFrame(() => requestAnimationFrame(sendWhenReady))
+      startSend('at-time')
     } else {
       dbg(onProgress, `#${frameNum} t=${time.toFixed(2)}s: seeking (readyState=${video.readyState})`)
       video.currentTime = time
-      video.addEventListener('seeked', () => {
-        dbg(onProgress, `#${frameNum} t=${time.toFixed(2)}s: seeked (readyState=${video.readyState})`)
-        requestAnimationFrame(() => requestAnimationFrame(sendWhenReady))
-      }, { once: true })
+      video.addEventListener('seeked', () => startSend('seeked'), { once: true })
+      // iOS Safari skips the seeked event when data is already buffered (readyState=4).
+      // Fall back after 300ms — data is there, we just never got the notification.
+      setTimeout(() => startSend('ios-fallback'), 300)
     }
   })
 }
@@ -208,10 +214,17 @@ async function extractFrame(video, time) {
       }
     }
 
-    video.currentTime = time
-    video.addEventListener('seeked', () => {
+    let captureStarted = false
+    function startCapture() {
+      if (captureStarted) return
+      captureStarted = true
       requestAnimationFrame(() => requestAnimationFrame(captureWhenReady))
-    }, { once: true })
+    }
+
+    video.currentTime = time
+    video.addEventListener('seeked', () => startCapture(), { once: true })
+    // Same iOS fallback as seekAndDetect — seeked event silently dropped
+    setTimeout(() => startCapture(), 300)
   })
 }
 
