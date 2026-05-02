@@ -2,7 +2,7 @@ import { useRef, useState, useEffect, useCallback } from 'react'
 
 const THUMB_COUNT = 8 // thumbnails along the trim bar
 
-export default function VideoTrimmer({ videoUrl, onAnalyze, onBack, error }) {
+export default function VideoTrimmer({ videoUrl, videoFile, onAnalyze, onBack, error }) {
   const videoRef = useRef(null)
   const [duration, setDuration] = useState(0)
   const [startFrac, setStartFrac] = useState(0)
@@ -10,6 +10,7 @@ export default function VideoTrimmer({ videoUrl, onAnalyze, onBack, error }) {
   const [thumbnails, setThumbnails] = useState([])
   const [currentTime, setCurrentTime] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [videoDims, setVideoDims] = useState(null)
   const thumbCanvasRef = useRef(null)
 
   function startTime() { return startFrac * duration }
@@ -36,12 +37,18 @@ export default function VideoTrimmer({ videoUrl, onAnalyze, onBack, error }) {
     for (let i = 0; i < THUMB_COUNT; i++) {
       const t = (i / (THUMB_COUNT - 1)) * dur
       await new Promise((resolve) => {
-        video.currentTime = t
-        video.addEventListener('seeked', () => {
+        let done = false
+        function grab() {
+          if (done) return
+          done = true
           ctx.drawImage(video, 0, 0, 120, 68)
           thumbs.push(canvas.toDataURL('image/jpeg', 0.6))
           resolve()
-        }, { once: true })
+        }
+        video.currentTime = t
+        video.addEventListener('seeked', () => requestAnimationFrame(grab), { once: true })
+        // iOS fallback — seeked event may never fire
+        setTimeout(grab, 400)
       })
     }
     setThumbnails(thumbs)
@@ -53,6 +60,7 @@ export default function VideoTrimmer({ videoUrl, onAnalyze, onBack, error }) {
 
     function onLoaded() {
       setDuration(video.duration)
+      setVideoDims({ w: video.videoWidth, h: video.videoHeight })
       setLoading(false)
       extractThumbnails(video)
     }
@@ -124,6 +132,17 @@ export default function VideoTrimmer({ videoUrl, onAnalyze, onBack, error }) {
             Drag the handles to bracket just the approach and contact.
             {duration > 10 && ' For slo-mo clips, this is usually 5–20 seconds of the file.'}
           </p>
+          {/* Video file info */}
+          {(videoDims || videoFile) && (
+            <p className="text-xs text-slate-500 mt-1">
+              {[
+                videoFile?.name?.match(/\.(mov|mp4|m4v)$/i)?.[1]?.toUpperCase(),
+                videoDims ? `${videoDims.w}×${videoDims.h}` : null,
+                videoFile ? `${(videoFile.size / 1024 / 1024).toFixed(1)} MB` : null,
+                duration ? `${duration.toFixed(1)}s total` : null,
+              ].filter(Boolean).join(' · ')}
+            </p>
+          )}
         </div>
 
         {/* Thumbnail strip + range sliders */}
@@ -197,6 +216,13 @@ export default function VideoTrimmer({ videoUrl, onAnalyze, onBack, error }) {
           <span className="text-blue-300 font-medium">{formatTime(windowSecs())} selected</span>
           <span>End: <span className="text-white font-mono">{formatTime(endTime())}</span></span>
         </div>
+
+        {/* Clip length warning */}
+        {windowSecs() > 30 && (
+          <div className="bg-yellow-900/30 border border-yellow-700 rounded-xl p-3 text-xs text-yellow-300">
+            Selection is {Math.round(windowSecs())}s — analysis works best under 30s. Trim tighter to just the approach and swing for faster, more accurate results.
+          </div>
+        )}
 
         {/* Tips */}
         <div className="bg-slate-900 rounded-xl p-3 text-xs text-slate-400 space-y-1">

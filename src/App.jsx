@@ -29,7 +29,6 @@ export default function App() {
   const [videoUrl, setVideoUrl] = useState(null)
   const [trimWindow, setTrimWindow] = useState({ start: 0, end: 0 })
   const [analysisProgress, setAnalysisProgress] = useState([])
-  const [debugLog, setDebugLog] = useState([])
   const [feedback, setFeedback] = useState(null)
   const [scoredSegments, setScoredSegments] = useState({})
   const [keyFrames, setKeyFrames] = useState([])
@@ -49,17 +48,12 @@ export default function App() {
     setTrimWindow({ start, end })
     setScreen(SCREEN.ANALYZING)
     setAnalysisProgress([])
-    setDebugLog([])
     setError(null)
 
     try {
       setAnalysisProgress(['Extracting key frames...'])
       const frames = await extractKeyFrames(video, start, end, (msg) => {
-        if (msg.startsWith('[DBG]')) {
-          setDebugLog((d) => [...d, msg.slice(5).trim()])
-        } else {
-          setAnalysisProgress((p) => [...p, msg])
-        }
+        setAnalysisProgress((p) => [...p, msg])
       })
       setKeyFrames(frames)
 
@@ -134,6 +128,7 @@ export default function App() {
         {screen === SCREEN.TRIM && videoUrl && (
           <VideoTrimmer
             videoUrl={videoUrl}
+            videoFile={videoFile}
             onAnalyze={handleAnalyze}
             onBack={handleReset}
             error={error}
@@ -141,7 +136,7 @@ export default function App() {
         )}
 
         {screen === SCREEN.ANALYZING && (
-          <AnalysisProgress steps={analysisProgress} debugLog={debugLog} />
+          <AnalysisProgress steps={analysisProgress} />
         )}
 
         {screen === SCREEN.RESULTS && feedback && (

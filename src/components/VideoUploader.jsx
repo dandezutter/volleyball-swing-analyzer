@@ -185,9 +185,16 @@ export default function VideoUploader({ onVideoSelected, error, initialProfile, 
         </div>
       )}
 
-      <p className="text-xs text-slate-500 text-center">
-        Works best with a side-angle view showing the full approach and swing.
-      </p>
+      <div className="w-full bg-slate-900 rounded-2xl p-4 space-y-2">
+        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">📹 Filming Tips</p>
+        <ul className="text-xs text-slate-500 space-y-1">
+          <li>• <span className="text-slate-400">Side angle</span> — film from the side so the full approach is visible</li>
+          <li>• <span className="text-slate-400">Full body</span> — capture head to toe throughout the swing</li>
+          <li>• <span className="text-slate-400">Good lighting</span> — avoid backlighting or deep shadows</li>
+          <li>• <span className="text-slate-400">Steady camera</span> — keep the phone still or use a tripod</li>
+          <li>• <span className="text-slate-400">Short clip</span> — just the approach + swing, under 30 seconds</li>
+        </ul>
+      </div>
     </div>
   )
 }

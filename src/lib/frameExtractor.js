@@ -2,20 +2,13 @@ import { getPoseDetector } from './poseDetection.js'
 
 const FRAME_WIDTH = 640
 const FRAME_HEIGHT = 360
-const MAX_SAMPLES = 60  // never process more than 60 poses per clip regardless of length
+
+// Mobile gets fewer samples to keep analysis time under ~30s on slower devices
+const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+const MAX_SAMPLES = isMobile ? 30 : 60
 
 // Event labels in order of the volleyball approach + swing sequence
 const EVENTS = ['approach-start', 'penultimate-step', 'takeoff', 'peak-jump', 'contact', 'follow-through']
-
-// ─── DEBUG ────────────────────────────────────────────────────────────────────
-// Set DEBUG = false (or delete the block below) to remove all debug output.
-const DEBUG = true
-function dbg(onProgress, msg) {
-  if (!DEBUG) return
-  console.log('[DBG]', msg)
-  onProgress?.(`[DBG] ${msg}`)
-}
-// ─────────────────────────────────────────────────────────────────────────────
 
 export async function extractKeyFrames(video, startTime, endTime, onProgress) {
   const detector = await getPoseDetector()
@@ -24,29 +17,25 @@ export async function extractKeyFrames(video, startTime, endTime, onProgress) {
   // Adaptive sampling: at most MAX_SAMPLES across the window
   const sampleInterval = Math.max(0.05, duration / MAX_SAMPLES)
 
-  dbg(onProgress, `Video: ${video.videoWidth}x${video.videoHeight} dur=${video.duration.toFixed(1)}s readyState=${video.readyState} netState=${video.networkState}`)
-  dbg(onProgress, `Clip: ${startTime.toFixed(2)}s–${endTime.toFixed(2)}s interval=${sampleInterval.toFixed(2)}s`)
-  dbg(onProgress, `UA: ${navigator.userAgent.slice(0, 100)}`)
-
   onProgress?.('Sampling pose data across the clip...')
 
   // Pass 1: collect pose samples at regular intervals
   const samples = []
   let t = startTime
-  let frameNum = 0
   while (t <= endTime) {
-    frameNum++
-    const landmarks = await seekAndDetect(video, t, detector, onProgress, frameNum)
+    const landmarks = await seekAndDetect(video, t, detector)
     if (landmarks) {
       samples.push({ time: t, landmarks })
     }
     t += sampleInterval
   }
 
-  dbg(onProgress, `Done: ${samples.length}/${frameNum} frames had pose data`)
-
   if (samples.length < 3) {
-    throw new Error('Not enough pose data detected. Make sure the player is visible throughout the clip.')
+    const found = samples.length
+    throw new Error(
+      `Pose detection only found ${found} usable frame${found === 1 ? '' : 's'} — need at least 3. ` +
+      `Check: full body visible head-to-toe, good lighting, side or front camera angle, clip under 30 seconds.`
+    )
   }
 
   onProgress?.(`Detected ${samples.length} pose frames — finding key moments...`)
@@ -69,16 +58,11 @@ export async function extractKeyFrames(video, startTime, endTime, onProgress) {
 }
 
 // Seek video to a timestamp and run pose detection
-async function seekAndDetect(video, time, detector, onProgress, frameNum) {
+async function seekAndDetect(video, time, detector) {
   return new Promise((resolve) => {
-    const startMs = Date.now()
-    let retryCount = 0
     let settled = false
 
-    const timeout = setTimeout(() => {
-      dbg(onProgress, `#${frameNum} t=${time.toFixed(2)}s: TIMEOUT — readyState=${video.readyState} retries=${retryCount}`)
-      settle(null)
-    }, 5000)
+    const timeout = setTimeout(() => settle(null), 5000)
 
     function settle(value) {
       if (settled) return
@@ -88,15 +72,11 @@ async function seekAndDetect(video, time, detector, onProgress, frameNum) {
     }
 
     detector.onResults((results) => {
-      const landmarks = results.poseLandmarks || null
-      const ms = Date.now() - startMs
-      dbg(onProgress, `#${frameNum} t=${time.toFixed(2)}s: ${landmarks ? `pose ✓ (${landmarks.length}pts)` : 'pose null'} retries=${retryCount} [${ms}ms]`)
-      setTimeout(() => settle(landmarks), 0)
+      setTimeout(() => settle(results.poseLandmarks || null), 0)
     })
 
     function doSend() {
       detector.send({ image: video }).catch(() => settle(null))
-      // Fallback if onResults never fires
       setTimeout(() => settle(null), 2500)
     }
 
@@ -104,30 +84,26 @@ async function seekAndDetect(video, time, detector, onProgress, frameNum) {
       if (video.readyState >= 2) {
         doSend()
       } else {
-        retryCount++
         setTimeout(sendWhenReady, 50)
       }
     }
 
     // Guard so seeked and the iOS fallback timer don't both trigger a send
     let sendStarted = false
-    function startSend(reason) {
+    function startSend() {
       if (sendStarted || settled) return
       sendStarted = true
-      dbg(onProgress, `#${frameNum} t=${time.toFixed(2)}s: ${reason} (readyState=${video.readyState})`)
       requestAnimationFrame(() => requestAnimationFrame(sendWhenReady))
     }
 
     if (Math.abs(video.currentTime - time) < 0.05) {
-      dbg(onProgress, `#${frameNum} t=${time.toFixed(2)}s: at time (readyState=${video.readyState})`)
-      startSend('at-time')
+      startSend()
     } else {
-      dbg(onProgress, `#${frameNum} t=${time.toFixed(2)}s: seeking (readyState=${video.readyState})`)
       video.currentTime = time
-      video.addEventListener('seeked', () => startSend('seeked'), { once: true })
-      // iOS Safari skips the seeked event when data is already buffered (readyState=4).
-      // Fall back after 300ms — data is there, we just never got the notification.
-      setTimeout(() => startSend('ios-fallback'), 300)
+      video.addEventListener('seeked', () => startSend(), { once: true })
+      // iOS Safari silently skips the seeked event when data is already buffered.
+      // Fall back after 300ms — the frame is there, the notification just never came.
+      setTimeout(() => startSend(), 300)
     }
   })
 }
@@ -205,7 +181,6 @@ async function extractFrame(video, time) {
       }
     }
 
-    // Same iOS timing fix as seekAndDetect — wait for frame to be compositor-ready
     function captureWhenReady() {
       if (video.readyState >= 2) {
         capture()
@@ -223,7 +198,6 @@ async function extractFrame(video, time) {
 
     video.currentTime = time
     video.addEventListener('seeked', () => startCapture(), { once: true })
-    // Same iOS fallback as seekAndDetect — seeked event silently dropped
     setTimeout(() => startCapture(), 300)
   })
 }
