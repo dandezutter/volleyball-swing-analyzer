@@ -39,17 +39,18 @@ const ANALYSIS_SCHEMA = `
       "notes": "2-3 sentences describing what the arm does after contact, whether the wrist snap and wrap-around are complete, and one fix if needed."
     }
   },
-  "drills": [
-    {
-      "name": "Drill name — 5 words max",
-      "focus": "The single weakness this directly targets",
-      "reps": "Sets/reps or time — e.g. '3 sets of 8' or '5 minutes'",
-      "instructions": "2-3 plain sentences: how to perform it, what to focus on, and what success feels like. No jargon."
-    }
-  ],
   "shareableText": "4-6 sentences a coach can text to a parent or player. Start with one genuine strength. Describe the top 1-2 issues with specific body-part and timing references (e.g. 'left foot was square rather than turned out at the penultimate step'). End with the coaching cue."
 }
 `
+
+const DRILLS_SCHEMA = `[
+  {
+    "name": "Drill name — 5 words max",
+    "focus": "The single weakness this directly targets",
+    "reps": "Sets/reps or time — e.g. '3 sets of 8' or '5 minutes'",
+    "instructions": "2-3 plain sentences: how to perform it, what to focus on, and what success feels like. No jargon."
+  }
+]`
 
 function buildSystemContext(athleteInfo, ruleAnalysis, frameResults) {
   const metricsBlock = frameResults ? JSON.stringify(
@@ -68,13 +69,12 @@ function buildSystemContext(athleteInfo, ruleAnalysis, frameResults) {
   const netHeight = athleteInfo?.netHeight ? `Net height: ${athleteInfo.netHeight}` : ''
   const profileLine = [age, height, gender, netHeight].filter(Boolean).join(' | ')
 
-  // Height-based jump context: estimate what a good jump looks like for this athlete
   let jumpContext = ''
   if (athleteInfo?.heightFt && athleteInfo?.heightIn !== undefined) {
     const totalIn = Number(athleteInfo.heightFt) * 12 + Number(athleteInfo.heightIn)
-    const netIn   = athleteInfo.netHeight === "8'" ? 96 : 88  // 8' or 7'4"
-    const reach   = Math.round(totalIn * 1.35)  // rough standing reach estimate
-    const neededJump = Math.max(0, netIn + 6 - reach)  // need at least 6" above net
+    const netIn   = athleteInfo.netHeight === "8'" ? 96 : 88
+    const reach   = Math.round(totalIn * 1.35)
+    const neededJump = Math.max(0, netIn + 6 - reach)
     jumpContext = `\nPlayer standing reach ≈ ${reach}" | Net height: ${netIn}" | Needs ~${neededJump}" of vertical to attack above the net.`
   }
 
@@ -108,8 +108,27 @@ Your job:
 6. Use age-appropriate, actionable language. No biomechanics jargon.
 7. Coaching cues must be short and memorable (e.g. "step open, explode up", "elbow high, snap through").
 8. Notes fields must be 3-5 complete sentences — not fragments.
-9. If a metric is not visible due to camera angle, mark it "not_visible" rather than guessing.
-10. Recommend exactly 3 drills that directly address the top weaknesses you found. Use real volleyball drill names where they exist (e.g. "Approach Footwork Ladder", "Wall Arm Swing", "Box Jumps", "Standing Broad Jump"). Each drill must fix a specific flaw from your analysis, include sets/reps a youth player can do on their own, and explain how in 2-3 plain sentences without biomechanics jargon.`
+9. If a metric is not visible due to camera angle, mark it "not_visible" rather than guessing.`
+}
+
+function buildDrillsPrompt(athleteInfo, ruleAnalysis) {
+  const name   = athleteInfo?.name || 'the player'
+  const age    = athleteInfo?.age  ? `Age: ${athleteInfo.age}` : ''
+  const gender = athleteInfo?.gender ? `Gender: ${athleteInfo.gender}` : ''
+  const profileLine = [age, gender].filter(Boolean).join(' | ')
+
+  return `You are a volleyball coach recommending practice drills for a youth player.
+Player: ${name}. ${profileLine}
+
+Rule-based pose analysis scores (needs_work = area to target):
+${ruleAnalysis || '(none)'}
+
+Recommend exactly 3 drills that directly address the weakest areas shown above.
+Use real volleyball drill names where they exist (e.g. "Approach Footwork Ladder", "Wall Arm Swing", "Box Jumps", "Standing Broad Jump").
+Each drill must fix a specific flaw, include sets/reps a youth player can do on their own, and explain how in 2-3 plain sentences without biomechanics jargon.
+
+Respond with ONLY a valid JSON array matching this exact schema (no markdown, no explanation, just the JSON):
+${DRILLS_SCHEMA}`
 }
 
 const ANALYSIS_PROMPT = `Analyze this player's volleyball approach and swing using the labeled frames above.
@@ -144,11 +163,9 @@ export const handler = async (event) => {
   }
 
   const client = new Anthropic({ apiKey })
-
-  // Merge net orientation into athleteInfo so context builder can reference it
   const enrichedAthleteInfo = { ...athleteInfo, netOrientation }
 
-  const content = [
+  const visionContent = [
     { type: 'text', text: buildSystemContext(enrichedAthleteInfo, analysis, frameResults) },
     ...frames.flatMap((frame) => [
       { type: 'text', text: `\n--- Frame: ${frame.label} ---` },
@@ -157,28 +174,60 @@ export const handler = async (event) => {
     { type: 'text', text: ANALYSIS_PROMPT },
   ]
 
+  const sonnetCall = client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 3000,
+    messages: [{ role: 'user', content: visionContent }],
+  })
+
+  const haikuCall = client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 600,
+    messages: [{ role: 'user', content: buildDrillsPrompt(athleteInfo, analysis) }],
+  })
+
+  const [sonnetResult, haikuResult] = await Promise.allSettled([sonnetCall, haikuCall])
+
+  if (sonnetResult.status === 'rejected') {
+    console.error('Sonnet error:', sonnetResult.reason)
+    return {
+      statusCode: 500,
+      headers: corsHeaders(),
+      body: JSON.stringify({ error: sonnetResult.reason?.message || 'Claude API call failed' }),
+    }
+  }
+
+  const rawText = sonnetResult.value.content[0]?.text || ''
+  const cleaned = rawText.replace(/^```json\n?/m, '').replace(/^```\n?/m, '').replace(/```$/m, '').trim()
+
+  let analysisObj
   try {
-    const message = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 4000,
-      messages: [{ role: 'user', content }],
-    })
-
-    const rawText = message.content[0]?.text || ''
-    const cleaned = rawText.replace(/^```json\n?/m, '').replace(/^```\n?/m, '').replace(/```$/m, '').trim()
-
+    analysisObj = JSON.parse(cleaned)
+  } catch {
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json', ...corsHeaders() },
       body: JSON.stringify({ feedback: cleaned }),
     }
-  } catch (err) {
-    console.error('Claude API error:', err)
-    return {
-      statusCode: 500,
-      headers: corsHeaders(),
-      body: JSON.stringify({ error: err.message || 'Claude API call failed' }),
+  }
+
+  if (haikuResult.status === 'fulfilled') {
+    const drillsRaw = haikuResult.value.content[0]?.text || ''
+    const drillsCleaned = drillsRaw.replace(/^```json\n?/m, '').replace(/^```\n?/m, '').replace(/```$/m, '').trim()
+    try {
+      analysisObj.drills = JSON.parse(drillsCleaned)
+    } catch {
+      analysisObj.drills = []
     }
+  } else {
+    console.error('Haiku drills error:', haikuResult.reason)
+    analysisObj.drills = []
+  }
+
+  return {
+    statusCode: 200,
+    headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+    body: JSON.stringify({ feedback: JSON.stringify(analysisObj) }),
   }
 }
 
