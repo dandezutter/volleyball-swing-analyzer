@@ -15,3 +15,11 @@
     padding-bottom: env(safe-area-inset-bottom);
   }
 }
+
+/* Print support — hide app chrome, show only the clean report */
+.print-only { display: none; }
+
+@media print {
+  .no-print  { display: none !important; }
+  .print-only { display: block !important; }
+}

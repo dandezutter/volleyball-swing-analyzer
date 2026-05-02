@@ -39,6 +39,14 @@ const ANALYSIS_SCHEMA = `
       "notes": "2-3 sentences describing what the arm does after contact, whether the wrist snap and wrap-around are complete, and one fix if needed."
     }
   },
+  "drills": [
+    {
+      "name": "Drill name — 5 words max",
+      "focus": "The single weakness this directly targets",
+      "reps": "Sets/reps or time — e.g. '3 sets of 8' or '5 minutes'",
+      "instructions": "2-3 plain sentences: how to perform it, what to focus on, and what success feels like. No jargon."
+    }
+  ],
   "shareableText": "4-6 sentences a coach can text to a parent or player. Start with one genuine strength. Describe the top 1-2 issues with specific body-part and timing references (e.g. 'left foot was square rather than turned out at the penultimate step'). End with the coaching cue."
 }
 `
@@ -100,7 +108,8 @@ Your job:
 6. Use age-appropriate, actionable language. No biomechanics jargon.
 7. Coaching cues must be short and memorable (e.g. "step open, explode up", "elbow high, snap through").
 8. Notes fields must be 3-5 complete sentences — not fragments.
-9. If a metric is not visible due to camera angle, mark it "not_visible" rather than guessing.`
+9. If a metric is not visible due to camera angle, mark it "not_visible" rather than guessing.
+10. Recommend exactly 3 drills that directly address the top weaknesses you found. Use real volleyball drill names where they exist (e.g. "Approach Footwork Ladder", "Wall Arm Swing", "Box Jumps", "Standing Broad Jump"). Each drill must fix a specific flaw from your analysis, include sets/reps a youth player can do on their own, and explain how in 2-3 plain sentences without biomechanics jargon.`
 }
 
 const ANALYSIS_PROMPT = `Analyze this player's volleyball approach and swing using the labeled frames above.
@@ -151,7 +160,7 @@ export const handler = async (event) => {
   try {
     const message = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 3000,
+      max_tokens: 4000,
       messages: [{ role: 'user', content }],
     })
 

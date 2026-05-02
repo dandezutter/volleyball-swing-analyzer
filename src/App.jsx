@@ -99,7 +99,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="bg-blue-900 px-4 py-3 flex items-center gap-3 shadow-lg flex-shrink-0">
+      <header className="no-print bg-blue-900 px-4 py-3 flex items-center gap-3 shadow-lg flex-shrink-0">
         <span className="text-2xl">🏐</span>
         <div>
           <h1 className="text-base font-bold leading-tight">MOD Swing Analyzer</h1>
