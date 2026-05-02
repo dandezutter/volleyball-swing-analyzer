@@ -1,3 +1,5 @@
+import { useRef, useEffect } from 'react'
+
 const ALL_STEPS = [
   'Extracting key frames...',
   'Analyzing volleyball mechanics...',
@@ -5,9 +7,23 @@ const ALL_STEPS = [
   'Building feedback report...',
 ]
 
-export default function AnalysisProgress({ steps }) {
+// ─── DEBUG ────────────────────────────────────────────────────────────────────
+// Mirrors the DEBUG flag in frameExtractor.js — set both to false to hide panel.
+const DEBUG = true
+// ─────────────────────────────────────────────────────────────────────────────
+
+export default function AnalysisProgress({ steps, debugLog = [] }) {
+  const debugRef = useRef(null)
+
+  // Auto-scroll debug panel to the latest message
+  useEffect(() => {
+    if (debugRef.current) {
+      debugRef.current.scrollTop = debugRef.current.scrollHeight
+    }
+  }, [debugLog])
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-60px)] p-8 gap-8">
+    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-60px)] p-4 gap-6">
       <div className="text-center">
         <div className="text-4xl mb-4 animate-bounce">🏐</div>
         <h2 className="text-xl font-bold mb-1">Analyzing Technique</h2>
@@ -41,6 +57,26 @@ export default function AnalysisProgress({ steps }) {
       <p className="text-xs text-slate-500 text-center max-w-xs">
         AI is reviewing approach footwork, arm mechanics, contact point, and follow-through.
       </p>
+
+      {/* ── DEBUG PANEL ─────────────────────────────────────────────────────── */}
+      {DEBUG && debugLog.length > 0 && (
+        <div className="w-full max-w-sm">
+          <p className="text-xs text-yellow-400 font-mono mb-1">
+            DEBUG — {debugLog.length} events (remove when done)
+          </p>
+          <div
+            ref={debugRef}
+            className="bg-black border border-yellow-800 rounded-lg p-2 h-52 overflow-y-auto"
+          >
+            {debugLog.map((msg, i) => (
+              <p key={i} className="font-mono text-xs text-green-400 leading-snug break-all">
+                {msg}
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
+      {/* ────────────────────────────────────────────────────────────────────── */}
     </div>
   )
 }

@@ -7,6 +7,16 @@ const MAX_SAMPLES = 60  // never process more than 60 poses per clip regardless 
 // Event labels in order of the volleyball approach + swing sequence
 const EVENTS = ['approach-start', 'penultimate-step', 'takeoff', 'peak-jump', 'contact', 'follow-through']
 
+// ─── DEBUG ────────────────────────────────────────────────────────────────────
+// Set DEBUG = false (or delete the block below) to remove all debug output.
+const DEBUG = true
+function dbg(onProgress, msg) {
+  if (!DEBUG) return
+  console.log('[DBG]', msg)
+  onProgress?.(`[DBG] ${msg}`)
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function extractKeyFrames(video, startTime, endTime, onProgress) {
   const detector = await getPoseDetector()
   const duration = endTime - startTime
@@ -14,18 +24,26 @@ export async function extractKeyFrames(video, startTime, endTime, onProgress) {
   // Adaptive sampling: at most MAX_SAMPLES across the window
   const sampleInterval = Math.max(0.05, duration / MAX_SAMPLES)
 
+  dbg(onProgress, `Video: ${video.videoWidth}x${video.videoHeight} dur=${video.duration.toFixed(1)}s readyState=${video.readyState} netState=${video.networkState}`)
+  dbg(onProgress, `Clip: ${startTime.toFixed(2)}s–${endTime.toFixed(2)}s interval=${sampleInterval.toFixed(2)}s`)
+  dbg(onProgress, `UA: ${navigator.userAgent.slice(0, 100)}`)
+
   onProgress?.('Sampling pose data across the clip...')
 
   // Pass 1: collect pose samples at regular intervals
   const samples = []
   let t = startTime
+  let frameNum = 0
   while (t <= endTime) {
-    const landmarks = await seekAndDetect(video, t, detector)
+    frameNum++
+    const landmarks = await seekAndDetect(video, t, detector, onProgress, frameNum)
     if (landmarks) {
       samples.push({ time: t, landmarks })
     }
     t += sampleInterval
   }
+
+  dbg(onProgress, `Done: ${samples.length}/${frameNum} frames had pose data`)
 
   if (samples.length < 3) {
     throw new Error('Not enough pose data detected. Make sure the player is visible throughout the clip.')
@@ -51,10 +69,16 @@ export async function extractKeyFrames(video, startTime, endTime, onProgress) {
 }
 
 // Seek video to a timestamp and run pose detection
-async function seekAndDetect(video, time, detector) {
+async function seekAndDetect(video, time, detector, onProgress, frameNum) {
   return new Promise((resolve) => {
-    const timeout = setTimeout(() => resolve(null), 5000)
+    const startMs = Date.now()
+    let retryCount = 0
     let settled = false
+
+    const timeout = setTimeout(() => {
+      dbg(onProgress, `#${frameNum} t=${time.toFixed(2)}s: TIMEOUT — readyState=${video.readyState} retries=${retryCount}`)
+      settle(null)
+    }, 5000)
 
     function settle(value) {
       if (settled) return
@@ -65,11 +89,14 @@ async function seekAndDetect(video, time, detector) {
 
     detector.onResults((results) => {
       const landmarks = results.poseLandmarks || null
+      const ms = Date.now() - startMs
+      dbg(onProgress, `#${frameNum} t=${time.toFixed(2)}s: ${landmarks ? `pose ✓ (${landmarks.length}pts)` : 'pose null'} retries=${retryCount} [${ms}ms]`)
       setTimeout(() => settle(landmarks), 0)
     })
 
     function doSend() {
       detector.send({ image: video }).catch(() => settle(null))
+      // Fallback if onResults never fires
       setTimeout(() => settle(null), 2500)
     }
 
@@ -80,15 +107,19 @@ async function seekAndDetect(video, time, detector) {
       if (video.readyState >= 2) {
         doSend()
       } else {
+        retryCount++
         setTimeout(sendWhenReady, 50)
       }
     }
 
     if (Math.abs(video.currentTime - time) < 0.05) {
+      dbg(onProgress, `#${frameNum} t=${time.toFixed(2)}s: at time (readyState=${video.readyState})`)
       requestAnimationFrame(() => requestAnimationFrame(sendWhenReady))
     } else {
+      dbg(onProgress, `#${frameNum} t=${time.toFixed(2)}s: seeking (readyState=${video.readyState})`)
       video.currentTime = time
       video.addEventListener('seeked', () => {
+        dbg(onProgress, `#${frameNum} t=${time.toFixed(2)}s: seeked (readyState=${video.readyState})`)
         requestAnimationFrame(() => requestAnimationFrame(sendWhenReady))
       }, { once: true })
     }
