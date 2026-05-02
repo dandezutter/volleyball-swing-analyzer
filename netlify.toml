@@ -15,6 +15,14 @@
     Cross-Origin-Opener-Policy = "same-origin"
     Cross-Origin-Embedder-Policy = "require-corp"
 
+# API endpoints must NOT carry COOP/COEP — these are document-level headers that
+# confuse iOS Safari when present on JSON fetch responses
+[[headers]]
+  for = "/.netlify/functions/*"
+  [headers.values]
+    Cross-Origin-Opener-Policy = "unsafe-none"
+    Cross-Origin-Embedder-Policy = "unsafe-none"
+
 # SPA fallback — route all paths to index.html
 [[redirects]]
   from = "/*"
@@ -23,3 +31,4 @@
 
 [functions]
   node_bundler = "esbuild"
+  timeout = 26
